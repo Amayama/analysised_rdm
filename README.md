@@ -2,6 +2,9 @@
 
 This repository contains the official implementation of paper [A Reparameterized Discrete Diffusion Model for Text Generation](https://arxiv.org/abs/2302.05737).
 
+## Comments from Linyao
+Check the formulation in 4.2 in the calculate_loss function in specific da
+
 ## Dependencies
 
 The codebase is implemented with [FairSeq](https://github.com/facebookresearch/fairseq). To install the dependencies, run (recommended in a [virtual environment](https://docs.python.org/3/library/venv.html)) the following commands:
