@@ -3,7 +3,8 @@
 This repository contains the official implementation of paper [A Reparameterized Discrete Diffusion Model for Text Generation](https://arxiv.org/abs/2302.05737).
 
 ## Comments from Linyao
-Check the formulation in 4.2 in the calculate_loss function in specific da
+Check the formulation in 4.2 in the calculate_loss function in specific diffusion model.
+Check the formulation in 4.3 in the sample_step function from line 485 in reparam_multinomial_diffusion model.
 
 ## Dependencies
 
