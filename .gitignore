@@ -60,3 +60,16 @@ docs/_build/
 checkpoints/
 
 data-bin/
+wmt14_ende/dev.de.ori
+wmt14_ende/dev.en.ori
+wmt14_ende/dict.de.txt
+wmt14_ende/dict.en.txt
+wmt14_ende/test.en-de.de
+wmt14_ende/test.de.ori
+wmt14_ende/test.en-de.en
+wmt14_ende/test.en.ori
+wmt14_ende/train.en-de.de
+wmt14_ende/train.en-de.en
+wmt14_ende/valid.en-de.de
+wmt14_ende/wmt14.bpe.codes
+wmt14_ende/valid.en-de.en

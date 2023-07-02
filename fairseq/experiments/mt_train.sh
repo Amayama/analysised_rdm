@@ -46,7 +46,7 @@ elif [[ $DATASET == "wmt14" ]]; then
     ARCH=diffusion_transformer_wmt
     NUM_GPUS=$(echo $CUDA_VISIBLE_DEVICES | awk 'BEGIN{FS=","};{print NF}')
     UPDATE_FREQ=$(( 32 / $NUM_GPUS )) # maintain ~128k tokens
-    DATA_SPECIFIC_ARGS="--warmup-updates 30000 --max-update 300000 --max-tokens 4096 --update-freq $UPDATE_FREQ --dropout 0.2"
+    DATA_SPECIFIC_ARGS="--warmup-updates 30000 --max-update 300000 --max-tokens 4096 --max-tokens-valid 1024 --update-freq $UPDATE_FREQ --dropout 0.2"
 elif [[ $DATASET == "wmt16" ]]; then
     DATA_TAG=data-bin/wmt16_enro
     ARCH=diffusion_transformer_wmt

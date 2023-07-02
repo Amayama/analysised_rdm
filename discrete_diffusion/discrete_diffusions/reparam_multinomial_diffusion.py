@@ -125,12 +125,15 @@ class ReparamMultinomialDiffusion(DiscreteDiffusion):
             non_special_sym_mask = torch.ones_like(non_special_sym_mask)
         _t1 = torch.maximum(t1, t2)
         _t2 = torch.minimum(t1, t2)
+        # _t1,_t2->(B)
         log_x0 = index_to_log_onehot(x_0, self.vocab_size)
         
         log_x_t1_logits = self.q_xt_given_x0(log_x0, _t1, non_special_sym_mask)
         u1 = torch.rand_like(log_x_t1_logits)
         log_x_t1 = log_sample_categorical(log_x_t1_logits, u1, num_classes=self.vocab_size) # [b, n, c]
-        
+        #print(log_x_t1.shape)
+        # log_x_t1->(B,N,C)
+        # u1/u2->noise
         log_x_t2_logits_if_eq = self.q_xt_given_x0(log_x0, _t2, non_special_sym_mask)
         xt_eq_x0_mask = log_x_t1.argmax(dim=-1) == x_0
         log_x_t2_logits_if_neq = self.q_tminusk_given_t_x0(
@@ -143,7 +146,6 @@ class ReparamMultinomialDiffusion(DiscreteDiffusion):
                     )
         select_mask = (_t1 == _t2).float().unsqueeze(-1).unsqueeze(-1)
         log_x_t2_logits = log_x_t2_logits_if_neq * (1. - select_mask) + log_x_t2_logits_if_eq * select_mask
-
         # TODO: investigate the effect of such antithetic pairs.
         # TODO: check when t1 == t2
         u2 = torch.rand_like(log_x_t2_logits) # 1. - u1
@@ -160,6 +162,7 @@ class ReparamMultinomialDiffusion(DiscreteDiffusion):
             non_special_sym_mask = torch.ones_like(non_special_sym_mask)
         log_x0 = index_to_log_onehot(x_0, self.vocab_size)
         log_q_xt_x0 = self.q_xt_given_x0(log_x0, t, non_special_sym_mask)
+        # q(x_t|x_0,t)
         log_sample = log_sample_categorical(log_q_xt_x0, num_classes=self.vocab_size) # [b, n, c]
         return log_sample
     
@@ -279,6 +282,7 @@ class ReparamMultinomialDiffusion(DiscreteDiffusion):
         log_cumprod_alpha_tminusk = mask * torch.zeros_like(log_cumprod_alpha_t) + (1. - mask) * log_cumprod_alpha_tminusk
         log_cumprod_alpha_from_tminusk_to_t = log_cumprod_alpha_t - log_cumprod_alpha_tminusk
 
+        # logaddexp->log(exp(a)+exp(b))
         logit_xt = log_sub_exp(log_cumprod_alpha_from_tminusk_to_t, log_cumprod_alpha_t)
         logit_x0 = log_sub_exp(log_cumprod_alpha_tminusk, log_cumprod_alpha_t)
         logit_uniform = log1mexp(log_cumprod_alpha_from_tminusk_to_t) + log1mexp(log_cumprod_alpha_tminusk)
@@ -341,24 +345,24 @@ class ReparamMultinomialDiffusion(DiscreteDiffusion):
         non_special_sym_mask = inputs["non_special_sym_mask"]
         decoder_outputs = inputs["decoder_outputs"]
 
-        log_x_0 = index_to_log_onehot(x_0, self.vocab_size)
+        log_x_0 = index_to_log_onehot(x_0, self.vocab_size) #(B,N,C)
         xt_eq_x0_mask = log_x_t.argmax(dim=-1) == x_0
         logit_tilde_x_0 = decoder_outputs
         if not self.not_diffusing_special_sym:
             non_special_sym_mask = torch.ones_like(non_special_sym_mask)
         # for non-symbol tokens, we mask their porbability getting into symbols;
         # for symbols, we force them to stay in the current state.
+        # print(self.special_sym_indicator.shape)->[C]
         logit_tilde_x_0 = logit_tilde_x_0.masked_fill(self.special_sym_indicator.bool(), -30)
         log_x0_recon = F.log_softmax(logit_tilde_x_0, dim=-1) # [b, n, c]
         # retain special symbols in input.
         log_x0_recon = torch.where(non_special_sym_mask.unsqueeze(-1), log_x0_recon, log_x_0)
         # t passed here are indexed in [0, T-1],
         # corresponding to x_1, x_2, \dots, x_T.
-        
         kl_loss = (
             F.cross_entropy(
-                log_x0_recon.transpose(-1, -2), 
-                x_0, 
+                log_x0_recon.transpose(-1, -2),#(B,C,N) 
+                x_0, #(B,N)
                 reduction='none'
             )
             .masked_fill(xt_eq_x0_mask, 0.0)
@@ -436,6 +440,7 @@ class ReparamMultinomialDiffusion(DiscreteDiffusion):
             cur_step = cur_step - 1
             cur_step_tensor = torch.full((output_tokens.shape[0],), cur_step, device=output_tokens.device, dtype=torch.long)
             # print("cur t : {}, step size: {}, t: {}, max_step: {}, diffusion steps : {}".format(cur_t[0], step_size, t, max_step, self.num_timesteps), flush=True)
+        # print(cur_step_tensor) -> fill of step to a tensor
         log_x_t = index_to_log_onehot(output_tokens, self.vocab_size) # [b, n, c]
         log_x0_recon = denoising_fn(x_t=output_tokens, t=cur_step_tensor) # [b, n, c]
         log_x0_recon = torch.log_softmax(log_x0_recon.masked_fill(self.special_sym_indicator.bool(), -30), dim=-1)
@@ -447,6 +452,7 @@ class ReparamMultinomialDiffusion(DiscreteDiffusion):
             else:
                 cur_tokens = dists.Categorical(logits=log_x0_recon / temperature).sample()
                 cur_scores = torch.gather(log_x0_recon, -1, cur_tokens.unsqueeze(-1)).squeeze(-1)
+
             # sample from q_noise(x_t)
             log_cumprod_alpha_t = extract(self.log_cumprod_alpha, cur_step_tensor, log_x_t.shape)
             log_cumprod_alpha_tminusk = extract(self.log_cumprod_alpha, (cur_step_tensor - cur_stepsize).clamp(min=0), log_x_t.shape)
@@ -475,6 +481,7 @@ class ReparamMultinomialDiffusion(DiscreteDiffusion):
                 max_step=max_step,
                 noise=uniform_noise,
             )
+        # Algorythm 2
         else:
             # instead of larger step sizes, we offset the current time instead.
             # we found this leads to better performance and less noisy translates.
@@ -494,10 +501,11 @@ class ReparamMultinomialDiffusion(DiscreteDiffusion):
             else:
                 cur_tokens = dists.Categorical(logits=log_x0_recon / temperature).sample()
                 cur_scores = torch.gather(log_x0_recon, -1, cur_tokens.unsqueeze(-1)).squeeze(-1)
-
+            # print(cur_tokens.shape)-> (B,N) 
             xt_neq_x0 = decoder_out.auxiliary_output["output_masks"]
-
+            # print(new_cur_step_tensor.shape) ->[B]
             log_cumprod_alpha_t = extract(self.log_cumprod_alpha, new_cur_step_tensor, log_x_t.shape)
+            # print(log_cumprod_alpha_t.shape)-> [B,1,1]
             log_cumprod_alpha_tminusk = extract(self.log_cumprod_alpha, (new_cur_step_tensor - cur_stepsize).clamp(min=0), log_x_t.shape)
             mask = (new_cur_step_tensor < cur_stepsize).float().unsqueeze(-1).unsqueeze(-1)
             log_cumprod_alpha_tminusk = mask * torch.zeros_like(log_cumprod_alpha_t) + (1. - mask) * log_cumprod_alpha_tminusk
@@ -516,6 +524,8 @@ class ReparamMultinomialDiffusion(DiscreteDiffusion):
                 log_x_t + log_cumprod_alpha_from_tminusk_to_t,
                 self.vocab_log_prob + log1mexp(log_cumprod_alpha_from_tminusk_to_t)
             )
+            # print(log_q_noise_xt.shape)->（B,N,C）
+
             uniform_noise = torch.rand_like(log_q_noise_xt)
             gumbel_noise = -torch.log(-torch.log(uniform_noise + 1e-10) + 1e-10)
             u = torch.argmax(gumbel_noise + log_q_noise_xt, dim=-1)
@@ -523,9 +533,10 @@ class ReparamMultinomialDiffusion(DiscreteDiffusion):
             output_scores.masked_fill_(masked_to_noise, -math.inf)
 
             masked_to_x0 = xt_neq_x0 & ~not_v_t
+            # print(masked_to_x0.shape)->(B, N)
             output_tokens.masked_scatter_(masked_to_x0, cur_tokens[masked_to_x0])
             output_scores.masked_scatter_(masked_to_x0, cur_scores[masked_to_x0])
-
+            # print(output_tokens.shape)-> (B, N)
             # 1_x = (1_x & u_t) | v_t
             # save the NOT output of 1_(x_t = x_0) for the next iteration
             # NOT_1_x = (NOT_1_x | NOT_u_t) & NOT_v_t
